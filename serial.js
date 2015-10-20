@@ -6,16 +6,46 @@ var async = require("async"),
   device = os.type() === 'Darwin' ? "/dev/tty.usbserial-DA01ID01" : '/dev/ttyUSB0';
 
 
-var port = new SerialPort(device, {
-  baudrate: 115200,
-  databits: 8,
-  stopbits: 1,
-  parity: 'none',
-  parser: serialport.parsers.readline('\n'),
-  platformOptions: {
-    vmin: 0
-  }
+var usb = require('usb-detection');
+
+usb.on('add', function (device) {
+  console.log('add', device);
 });
+
+usb.find(function (err, devices) {
+  var fasel = {
+    locationId: 0,
+    vendorId: 1027,
+    productId: 24597,
+    deviceName: 'FT231X USB UART',
+    manufacturer: 'FTDI',
+    serialNumber: 'DA01ID01',
+    deviceAddress: 0
+  };
+  console.log('found', devices, err);
+});
+
+/*
+ var bla = usb.getDeviceList();
+ bla.forEach(function (dev) {
+ if (dev.deviceDescriptor.idVendor == 0x0403 && dev.deviceDescriptor.idProduct == 0x6015) {
+ var port_number = dev.portNumbers[0] - 1;
+ }
+ });
+
+ */
+
+var port = new SerialPort(
+  device, {
+    baudrate: 115200,
+    databits: 8,
+    stopbits: 1,
+    parity: 'none',
+    parser: serialport.parsers.readline('\n'),
+    platformOptions: {
+      vmin: 0
+    }
+  });
 
 function parsePacket(packet) {
   console.log('SERIAL: ', packet.length, ' pieces of data in the package')
@@ -51,8 +81,6 @@ exports.start = function (onChange) {
       process.exit(23);
     } else {
       console.log('SERIAL: Port opened');
-
-      //port.on('data', function(line) { console.log(line); });
       port.on('data', makeParser(onChange));
     }
   });
