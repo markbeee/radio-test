@@ -43,7 +43,7 @@ var createSignalHandler = function (data) {
 };
 
 var main = function () {
-  data = storage.read(function (data) {
+  var data = storage.read(function (data) {
     // express
     // static file server
     app.use(express.static(path.join(__dirname, './static')));
@@ -68,8 +68,8 @@ var main = function () {
         console.log('User disconnected. %s. Socket id %s', socket.id);
       });
     });
-// serial console handlers
-    serial.start(createSignalHandler(data));
+    // serial console handlers
+    serial.initialize(createSignalHandler(data));
     http.listen(process.env.PORT || 5000, function () {
       console.log('listening on: ' + process.env.PORT || 5000);
     });

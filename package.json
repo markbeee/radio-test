@@ -17,6 +17,7 @@
     "serialport": "^1.7.4",
     "socket.io": "^1.3.7",
     "underscore": "^1.8.3",
+    "usb": "^1.0.6",
     "usb-detection": "^1.3.0"
   },
   "engines": {

@@ -2,54 +2,14 @@ var async = require("async"),
   serialport = require("serialport"),
   SerialPort = serialport.SerialPort,
   os = require('os'),
-// TODO: Make device selection way more clever
-  device = os.type() === 'Darwin' ? "/dev/tty.usbserial-DA01ID01" : '/dev/ttyUSB0';
+  usbDetection = require('usb-detection'),
+  usb = require('usb'),
+  port = null,
+  knownDevices = [
+    // [vendorID, productID]
+    [0x0403, 0x6015]
+  ];
 
-
-var usb = require('usb-detection');
-
-usb.on('add', function (device) {
-  console.log('add', device);
-});
-
-usb.find(function (err, devices) {
-  var fasel = {
-    locationId: 0,
-    vendorId: 1027,
-    productId: 24597,
-    deviceName: 'FT231X USB UART',
-    manufacturer: 'FTDI',
-    serialNumber: 'DA01ID01',
-    deviceAddress: 0
-  };
-  console.log('found', devices, err);
-});
-
-/*
- var bla = usb.getDeviceList();
- bla.forEach(function (dev) {
- if (dev.deviceDescriptor.idVendor == 0x0403 && dev.deviceDescriptor.idProduct == 0x6015) {
- var port_number = dev.portNumbers[0] - 1;
- }
- });
-
- */
-
-var port = new SerialPort(
-  device, {
-    baudrate: 115200,
-    databits: 8,
-    stopbits: 1,
-    parity: 'none',
-    parser: serialport.parsers.readline('\n'),
-    platformOptions: {
-      vmin: 0
-    }
-  });
-
-function parsePacket(packet) {
-  console.log('SERIAL: ', packet.length, ' pieces of data in the package')
-}
 
 function makeParser(cb) {
   var lineBuffer = {timings: [], bits: [], empty: true};
@@ -74,25 +34,82 @@ function makeParser(cb) {
 }
 
 
-exports.start = function (onChange) {
-  port.on("open", function (error) {
-    if (error) {
-      console.log('SERIAL: Failed to open port: ' + error);
-      process.exit(23);
-    } else {
-      console.log('SERIAL: Port opened');
-      port.on('data', makeParser(onChange));
+var createPort = function (deviceName) {
+  return new SerialPort(
+    deviceName, {
+      baudrate: 115200,
+      databits: 8,
+      stopbits: 1,
+      parity: 'none',
+      parser: serialport.parsers.readline('\n'),
+      platformOptions: {
+        vmin: 0
+      }
+    });
+};
+
+
+var handleUSB = function (device, receiver) {
+  var devicename;
+  for (var i = 0; i < knownDevices.length; i++) {
+    if (device.vendorId == knownDevices[i][0] && device.productId == knownDevices[i][1]) {
+      if (os.type() === 'Darwin') {
+        devicename = "/dev/tty.usbserial-" + device.serialNumber;
+      } else {
+        device = usb.findByIds(device.vendorId, device.productId);
+        console.log("debug", device);
+        devicename = '/dev/ttyUSB' + (device.portNumbers[0] - 1).toString();
+      }
+      setTimeout(function () {
+        port = createPort(devicename);
+        port.on("open", function (error) {
+          if (error) {
+            port = null;
+            console.log('SERIAL ERROR: Failed to open port "' + devicename + '": ' + error);
+          } else {
+            console.log('SERIAL: Opened port "' + devicename + '"');
+            port.on('data', makeParser(receiver));
+          }
+        });
+
+        port.on('error', function (error) {
+          port = null;
+          console.log('SERIAL ERROR on "' + devicename + '":', error);
+        });
+        // TODO: port.close(function)???
+      }, 3000);
     }
+  }
+};
+
+
+exports.initialize = function (receiver) {
+  usbDetection.on('add', function (device) {
+    console.log('SERIAL USB: Device: "' + device.deviceName + ' by "' + device.manufacturer, '" added.');
+    handleUSB(device, receiver);
   });
 
-  port.on('error', function (error) {
-    console.log('SERIAL ERROR: ' + error);
+  usbDetection.on('remove', function (device) {
+    console.log('SERIAL USB: Device "' + device.deviceName + ' by "' + device.manufacturer, '" removed.');
+    port = null;
+  });
+
+  usbDetection.find(function (err, devices) {
+    if (err) {
+      console.log('SERIAL ERROR:', err);
+    }
+    else {
+      devices.forEach(function (device) {
+        console.log('SERIAL USB: Device "' + device.deviceName + ' by "' + device.manufacturer, '" found.');
+        handleUSB(device, receiver);
+      });
+    }
   });
 };
+
 
 exports.send = function (data) {
   console.log("SERIAL: Sending data ...");
   var toSend = data.join(",");
-  port.write("P" + toSend + ",S");
+  return port && port.write("P" + toSend + ",S");
 };
-
