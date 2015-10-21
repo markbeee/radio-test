@@ -9,6 +9,20 @@ var express = require('express'),
   analyse = require('./analyse').analyse;
 
 
+var handleWebhook = function (data, get_or_post) {
+  if (typeof data.webhook_send == "string") {
+    console.log("Calling webhook on send: ", data['webhook_send']);
+    var req = get_or_post === 'post' ? request.post(data['webhook_receive'], data) : request.get(data['webhook_send']);
+    req.on('error', function (err) {
+      console.log(err)
+    });
+    req.on('response', function (response) {
+      // TODO: Do something with the response?
+      console.log("Webhook status code: ", response.statusCode);
+    });
+  }
+};
+
 data = storage.read(function (data) {
   // express
   // static file server
@@ -20,18 +34,7 @@ data = storage.read(function (data) {
     io.emit('known signals', data);
     socket.on('send signal', function (signal_id) {
       var signal = data[signal_id];
-      if (typeof signal.webhook_send == "string") {
-        console.log("Calling webhook on send: ", signal['webhook_send']);
-        request
-          .get(signal['webhook_send'])
-          .on('error', function (err) {
-            console.log(err)
-          })
-          .on('response', function (response) {
-            // TODO: Do something with the response?
-            console.log("Webhook status code: ", response.statusCode);
-          });
-      }
+      handleWebhook(signal, "get");
       console.log("Sending Signal to ", signal.name, " (", signal_id, ")");
       serial.send(signal.timings);
     });
@@ -58,24 +61,12 @@ data = storage.read(function (data) {
         io.emit('new signal', signal);
         io.emit('known signal', signal);
       }
-      var webhook = data[signal.identity]["webhook_receive"];
-      if (typeof webhook == "string") {
-        console.log("Calling webhook on receive: ", webhook);
-        request
-          .post(webhook, signal)
-          .on('error', function (err) {
-            console.log("Webhook ERROR: ", err)
-          })
-          .on('response', function (response) {
-            // TODO: Do something with the response?
-            console.log("Webhook status code: ", response.statusCode);
-          });
-      }
+      signal = data[signal.identity];
+      handleWebhook(signal, 'post');
     }
   });
   http.listen(process.env.PORT || 5000, function () {
     console.log('listening on: ' + process.env.PORT || 5000);
   });
-})
-;
+});
 
